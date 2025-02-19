@@ -4,7 +4,7 @@
 
 일반적으로 `apt install nginx` 명령어로 설치할 수도 있지만, **최신 버전을 설치하기 위해 추가 패키지 작업을 거쳤음.**
 
-### 1. Nginx 필수 패키지 설치
+### Nginx 필수 패키지 설치
 
 먼저, Nginx 설치에 필요한 기본 패키지와 Nginx를 설치해보자.
 
@@ -40,8 +40,6 @@ sudo apt update
 sudo apt install nginx
 ```
 
----
-
 ### Nginx 실행 및 상태 확인
 
 설치가 완료 되었으면, Nginx를 실행 및 상태 확인
@@ -54,8 +52,6 @@ sudo systemctl status nginx
 sudo systemctl start nginx
 
 ```
-
----
 
 ### Nginx 로그 확인
 
@@ -72,3 +68,126 @@ tail access.log
 tail -f access.log
 
 ```
+---
+
+## Nginx 설정 파일 구조 및 기본 설정
+
+### Nginx 설정 파일 위치
+
+Nginx의 설정 파일은 `/etc/nginx` 경로에 위치하며, 기본적인 설정 파일은 다음과 같다.
+
+```bash
+cd /etc/nginx
+```
+
+```bash
+conf.d          # 개별 서버 설정 파일 폴더
+fastcgi_params  # FastCGI 관련 설정
+mime.types      # MIME 타입 설정
+modules         # Nginx 모듈
+nginx.conf      # Nginx 전반적인 설정 파일
+scgi_params     # SCGI 관련 설정
+uwsgi_params    # uWSGI 관련 설정
+```
+
+### nginx.conf (Nginx 전역 설정 파일)
+
+`nginx.conf`는 Nginx의 전반적인 동작을 설정하는 파일로, 주요 내용을 살펴보면 다음과 같다. 기초 단계에서는 당장 nginx.conf 파일에서 설정 할 것은 없다. 즉, 커스텀 설정파일을 `include`를 통해 링크해주면 된다. `/etc/nginx/conf.d/*.conf;` 개별 서버 설정 파일 포함하는 문법이다.
+
+```
+user  nginx;  # Nginx 프로세스를 실행할 사용자
+worker_processes  auto;  # 사용 가능한 CPU 코어 수에 따라 worker 프로세스 자동 설정
+
+error_log  /var/log/nginx/error.log notice;  # 에러 로그 위치
+pid        /var/run/nginx.pid;  # Nginx 프로세스 ID 파일
+
+events {
+    worker_connections  1024;  # 하나의 worker 프로세스가 처리할 수 있는 최대 연결 수
+}
+
+http {
+    include       /etc/nginx/mime.types;  # MIME 타입 설정 파일 포함
+    default_type  application/octet-stream;  # 기본 MIME 타입
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;  # 접근 로그 설정
+
+    sendfile        on;  # 파일 전송 최적화 활성화
+    keepalive_timeout  65;  # Keep-Alive 연결 유지 시간 설정
+
+    include /etc/nginx/conf.d/*.conf;  # 개별 서버 설정 파일 포함
+}
+```
+
+### conf.d/default.conf (서버 블록 설정)
+
+기본적으로 `conf.d` 폴더 안에 있는 `default.conf` 파일에서 개별 서버의 동작을 설정할 수 있다.
+
+```bash
+cd /etc/nginx/conf.d
+```
+
+기본 설정 내용:
+
+```
+
+server {
+    listen       80;  # 서버가 80번 포트에서 HTTP 요청 수신
+    server_name  localhost;  # 서버 이름 설정
+
+    location / {
+        root   /usr/share/nginx/html;  # 웹 루트 디렉토리 설정
+        index  index.html index.htm;  # 기본 제공할 파일 목록
+    }
+
+    error_page   500 502 503 504  /50x.html;  # 에러 발생 시 표시할 페이지 설정
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+
+    # PHP 파일 처리를 위한 FastCGI 설정 예시 (주석 처리됨)
+    # location ~ \.php$ {
+    #     fastcgi_pass   127.0.0.1:9000;
+    #     fastcgi_index  index.php;
+    #     fastcgi_param  SCRIPT_FILENAME  /scripts$fastcgi_script_name;
+    #     include        fastcgi_params;
+    # }
+
+    # .htaccess 접근 차단 (Apache의 .htaccess 파일 보안 설정)
+    # location ~ /\.ht {
+    #     deny  all;
+    # }
+}
+
+```
+
+### 주요 설정 설명
+
+| 설정 | 설명 |
+| --- | --- |
+| `server` | 하나의 웹 사이트에 관련된 설정을 관리하는 단위 (server 블록이라고한다.) |
+| `listen 80;` | 80번 포트에서 HTTP 요청을 수신 |
+| `server_name localhost;` | 서버의 도메인 또는 호스트명 설정, 만약 ip로 치고 들어 왔을 경우 -> server_name에 일치하는 블럭이 없을 경우 첫 번째 정의되어 있는 server 블럭 기반으로 처리한다. |
+| `location / {}` | /로 시작하는 모든 경로를 처리 |
+| `root /usr/share/nginx/html;` | 웹사이트 루트 디렉토리 설정 |
+| `index index.html index.htm;` | 기본 파일 설정 (index.html 또는 index.htm) |
+| `error_page 500 502 503 504 /50x.html;` | 서버 오류 발생 시 보여줄 페이지 지정 |
+| `location = /50x.html` | /50x.html과 완전히 일치하는 경로를 처리하며, {} 블록안에 있는 /usr/share/nginx/html 폴더 안에 있는 /50x.html 파일로 처리하겠다는 의미이다.  |
+| `location ~ \.php$ { ... }` | PHP 요청을 FastCGI 서버로 전달 (현재 주석 처리됨) |
+| `location ~ /\.ht { deny all; }` | `.htaccess` 파일 접근 차단 |
+
+### 설정 적용 방법
+
+Nginx 설정을 변경한 후 적용하려면 아래 명령어를 실행한다.
+
+```bash
+# 설정 파일 문법 확인
+nginx -t
+
+# Nginx 재시작
+systemctl restart nginx
+```
+
