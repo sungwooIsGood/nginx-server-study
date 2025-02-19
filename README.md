@@ -191,3 +191,188 @@ nginx -t
 systemctl restart nginx
 ```
 
+---
+
+## 🛠️ Nginx 디버깅 방법
+
+Nginx에서 설정 변경 후 문제가 발생하거나, 특정 경로 및 파일이 정상적으로 동작하지 않을 때 디버깅하는 방법을 정리합니다.
+
+---
+
+### 1️. Nginx 서비스 상태 확인
+
+먼저 Nginx가 실행 중인지 확인한다.
+
+```bash
+sudo systemctl status nginx
+```
+
+- `active (running)` 상태라면 정상 실행 중
+- `inactive (dead)` 또는 `failed` 상태라면 실행되지 않고 있는 것
+
+만약 실행되지 않는다면 아래 명령어로 다시 실행할 수 있다.
+
+```bash
+sudo systemctl restart nginx
+```
+
+### 2️. Nginx 설정 문법 검사
+
+Nginx 설정 파일의 문법 오류를 확인하는 명령어이다.
+
+```bash
+sudo nginx -t
+
+```
+
+- 성공 예시:
+```bash
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+```
+
+- 실패 예시:
+```bash
+nginx: [emerg] unknown directive "serverx" in /etc/nginx/conf.d/default.conf:2
+nginx: configuration file /etc/nginx/nginx.conf test failed
+```
+
+---
+
+### 3️. Nginx 로그 확인
+
+설정 문법에는 문제가 없지만 파일 경로나 설정이 잘못되었을 수 있다.
+이때, Nginx 로그를 확인하는 것이 중요하다.
+
+### Nginx 로그 디렉토리 이동
+
+```bash
+cd /var/log/nginx
+ls -l
+```
+
+로그 파일 목록이 출력된다.
+
+```bash
+-rw-r--r-- 1 root root  123456 Feb 19 10:00 access.log
+-rw-r--r-- 1 root root  654321 Feb 19 10:00 error.log
+
+```
+
+### Access Log 확인 (요청이 Nginx까지 도달했는지 확인)
+
+```bash
+sudo tail -f access.log
+```
+
+- 요청이 정상적으로 들어온 경우 예시:
+
+```bash
+192.168.0.1 - - [19/Feb/2025:10:15:42 +0000] "GET /index.html HTTP/1.1" 200 1234 "-" "Mozilla/5.0"
+```
+
+🚨 만약 아무 로그도 찍히지 않는다면 요청 자체가 Nginx까지 도달하지 않았을 가능성이 높다. 이 경우 방화벽 설정(`ufw`), 포트(`netstat`), 서버 바인딩 IP를 확인해 봐야 한다.
+
+```bash
+sudo netstat -tulnp | grep nginx  # Nginx가 80번 포트를 리스닝하고 있는지 확인
+```
+
+---
+
+### Error Log 확인 (경로 문제, 파일 누락 등)
+
+```bash
+sudo tail -f error.log
+```
+
+- 경로 문제 예시:
+
+```bash
+2025/02/19 10:20:00 [error] 12345#12345: *1 open() "/usr/share/nginx/html/index.htm" failed (2: No such file or directory)
+```
+
+위와 같은 오류가 발생하면 설정 파일(`/etc/nginx/conf.d/default.conf`)에서 `root` 경로를 확인하고, 실제 파일이 존재하는지 체크해야 한다.
+
+```bash
+ls -l /usr/share/nginx/html/index.html
+
+```
+
+파일이 존재하지 않으면 파일을 추가하거나 `root` 경로를 올바르게 수정하면 된다.
+
+### 4️. 추가 디버깅: SELinux 및 방화벽 설정 확인
+
+Nginx가 실행 중인데도 페이지가 정상적으로 로딩되지 않는다면, SELinux나 방화벽 문제일 수 있다.
+
+### SELinux 확인
+
+```bash
+getenforce
+```
+
+`Enforcing` 모드일 경우, SELinux가 파일 접근을 차단했을 가능성이 있다.
+이를 일시적으로 비활성화하려면 다음 명령어를 실행하자.
+
+```bash
+sudo setenforce 0
+```
+
+영구적으로 비활성화하려면 `/etc/selinux/config` 파일을 수정하면 된다.
+
+```bash
+sudo vi /etc/selinux/config
+# SELINUX=enforcing → SELINUX=disabled 변경 후 저장
+```
+
+### 5. 방화벽 설정 확인
+
+Nginx의 기본 포트(80, 443)가 방화벽에서 허용되어 있는지 확인한다.
+
+```bash
+sudo ufw status
+```
+
+포트가 차단되어 있다면 다음 명령어로 허용하자.
+
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw reload
+
+```
+
+
+### 디버깅 요약 - 문제 해결 프로세스 정리
+
+1️⃣ **Nginx 서비스 상태 확인**
+
+```bash
+sudo systemctl status nginx
+```
+
+2️⃣ **Nginx 설정 문법 검사**
+
+```bash
+sudo nginx -t
+```
+
+3️⃣ **Access Log 확인**
+
+```bash
+sudo tail -f /var/log/nginx/access.log
+```
+
+4️⃣ **Error Log 확인**
+
+```bash
+sudo tail -f /var/log/nginx/error.log
+```
+
+5️⃣ **SELinux 및 방화벽 확인**
+
+```bash
+getenforce
+sudo ufw status
+```
+
+위 단계를 차례대로 확인하면 대부분의 Nginx 문제를 해결해보자~
+
